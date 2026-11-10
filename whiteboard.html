@@ -1,0 +1,764 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="light dark" />
+<link rel="icon" href="data:," />
+<title>Whiteboard</title>
+<style>
+  :root{
+    --bg:#eef0ea;
+    --panel:#fbfbf7;
+    --panel-2:#f1efe6;
+    --ink:#1e2a24;
+    --ink-dim:#5c6a62;
+    --line:#d8d5c8;
+    --accent:#1b7a4a;
+    --accent-hover:#15663c;
+    --danger:#c0392b;
+    --shadow:0 6px 24px rgba(30,42,36,.14), 0 1px 3px rgba(30,42,36,.12);
+    --radius:14px;
+    --board:#ffffff;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#171b18;
+      --panel:#232824;
+      --panel-2:#2b322c;
+      --ink:#edf2ec;
+      --ink-dim:#9fb0a4;
+      --line:#3a423a;
+      --accent:#3fae6e;
+      --accent-hover:#4fc07e;
+      --shadow:0 6px 24px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.4);
+      --board:#fdfdf8;
+    }
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    font-family:ui-rounded, "Segoe UI", system-ui, -apple-system, sans-serif;
+    background:var(--bg);
+    color:var(--ink);
+    display:flex; flex-direction:column;
+    overflow:hidden;
+  }
+  button, [role="button"], select, input{ min-height:2.25rem; }
+  button{ font-family:inherit; }
+
+  /* ---------- Toolbar ---------- */
+  header{
+    display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px;
+    padding:10px 14px;
+    background:var(--panel);
+    border-bottom:1px solid var(--line);
+    z-index:5;
+  }
+  .group{ display:flex; align-items:center; gap:6px; }
+  .group + .group{ border-left:1px solid var(--line); padding-left:14px; }
+  .group-label{ font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-dim); font-weight:700; margin-right:2px; }
+
+  .tool-btn{
+    display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    min-width:40px; padding:0 10px;
+    border:1.5px solid transparent; border-radius:10px;
+    background:transparent; color:var(--ink);
+    font-size:13.5px; font-weight:600; cursor:pointer;
+    transition:background .12s, border-color .12s;
+  }
+  .tool-btn svg{ width:18px; height:18px; flex:none; }
+  .tool-btn:hover{ background:var(--panel-2); }
+  .tool-btn.active{ background:var(--ink); color:var(--panel); border-color:var(--ink); }
+  .tool-btn:disabled{ opacity:.35; cursor:default; }
+  .tool-btn:disabled:hover{ background:transparent; }
+  .tool-btn.danger:hover{ background:#fbeae8; color:var(--danger); }
+  @media (prefers-color-scheme: dark){ .tool-btn.danger:hover{ background:#3a2422; } }
+  .tool-btn.primary{ background:var(--accent); color:#fff; border-color:var(--accent); }
+  .tool-btn.primary:hover{ background:var(--accent-hover); }
+
+  .swatches{ display:flex; align-items:center; gap:5px; }
+  .swatch{
+    width:26px; height:26px; min-height:26px; border-radius:50%;
+    border:2px solid rgba(0,0,0,.18); cursor:pointer; padding:0;
+    transition:transform .1s;
+  }
+  .swatch:hover{ transform:scale(1.15); }
+  .swatch.active{ box-shadow:0 0 0 2px var(--panel), 0 0 0 4.5px var(--ink); }
+  .custom-color{
+    width:30px; height:30px; min-height:30px; border-radius:50%; overflow:hidden;
+    border:2px dashed var(--ink-dim); cursor:pointer; flex:none;
+    padding:0; background:transparent; appearance:none; -webkit-appearance:none;
+  }
+  .custom-color::-webkit-color-swatch-wrapper{ padding:3px; }
+  .custom-color::-webkit-color-swatch{ border:none; border-radius:50%; }
+  .custom-color::-moz-color-swatch{ border:none; border-radius:50%; }
+
+  input[type="range"]{ width:110px; accent-color:var(--accent); cursor:pointer; }
+  .size-readout{ font-size:12.5px; font-weight:700; color:var(--ink-dim); min-width:34px; text-align:left; font-variant-numeric:tabular-nums; }
+  .size-dot{ border-radius:50%; background:var(--ink); flex:none; transition:width .1s, height .1s; }
+
+  select{
+    font-family:inherit; font-size:13.5px; font-weight:600; color:var(--ink);
+    background:var(--panel-2); border:1.5px solid var(--line); border-radius:10px;
+    padding:0 8px; cursor:pointer;
+  }
+
+  /* ---------- Board ---------- */
+  main{ flex:1; position:relative; padding:14px; display:flex; min-height:0; }
+  .board-wrap{
+    flex:1; position:relative; border-radius:6px;
+    box-shadow:var(--shadow);
+    background:var(--board);
+    overflow:hidden;
+    touch-action:none;
+  }
+  canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; cursor:crosshair; }
+  #bgLayer{ pointer-events:none; cursor:default; }
+  canvas.eraser-cursor{ cursor:cell; }
+  canvas.text-cursor{ cursor:text; }
+
+  .hint{
+    position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
+    text-align:center; pointer-events:none; color:#9aa79d;
+    font-family:-apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif;
+    user-select:none; padding:0 20px;
+  }
+  .hint .big{ font-size:clamp(22px,4vw,34px); }
+  .hint .small{ font-size:15px; margin-top:6px; color:#b3beb2; }
+
+  .text-input{
+    position:absolute; z-index:4; border:none; outline:2px dashed var(--accent);
+    background:rgba(255,255,255,.85); font-family:-apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif;
+    padding:2px 6px; border-radius:4px; min-width:120px; max-width:60vw;
+    resize:none; overflow:hidden; line-height:1.25;
+  }
+
+  .toast{
+    position:absolute; left:50%; bottom:18px; transform:translateX(-50%) translateY(8px);
+    background:var(--ink); color:var(--panel); font-size:13.5px; font-weight:600;
+    padding:8px 16px; border-radius:999px; opacity:0; pointer-events:none;
+    transition:opacity .2s, transform .2s; z-index:6; white-space:nowrap;
+  }
+  .toast.show{ opacity:1; transform:translateX(-50%) translateY(0); }
+
+  .confirm-bar{
+    position:absolute; left:50%; top:14px; transform:translateX(-50%);
+    background:var(--panel); border:1px solid var(--line); box-shadow:var(--shadow);
+    border-radius:12px; padding:8px 10px 8px 14px; display:none; align-items:center; gap:10px;
+    z-index:7; font-size:14px; font-weight:600;
+  }
+  .confirm-bar.show{ display:flex; }
+  .confirm-bar button{ border-radius:8px; border:1.5px solid var(--line); background:var(--panel-2); color:var(--ink); font-weight:700; padding:0 12px; cursor:pointer; font-size:13.5px; }
+  .confirm-bar button.yes{ background:var(--danger); border-color:var(--danger); color:#fff; }
+
+  footer{
+    display:flex; justify-content:space-between; align-items:center; gap:10px;
+    padding:6px 16px 10px; font-size:12px; color:var(--ink-dim);
+  }
+  footer .keys{ display:flex; gap:14px; flex-wrap:wrap; }
+  kbd{ background:var(--panel-2); border:1px solid var(--line); border-bottom-width:2px; border-radius:5px; padding:0 5px; font-family:inherit; font-size:11px; }
+
+  @media (max-width:760px){
+    .group-label{ display:none; }
+    .group + .group{ padding-left:8px; }
+    header{ gap:6px 8px; padding:8px 10px; }
+    main{ padding:8px; }
+    footer .keys span:nth-child(n+3){ display:none; }
+    .tool-btn .btn-text{ display:none; }
+    .tool-btn{ padding:0 8px; }
+    input[type="range"]{ width:76px; }
+  }
+
+  /* ---------- Minimal overrides ---------- */
+  :root{ --panel:#fff; --panel-2:#f2f2ef; --line:#e6e6e1; --bg:#fff; --radius:10px; }
+  @media (prefers-color-scheme: dark){ :root{ --panel:#1e1e1e; --panel-2:#2a2a2a; --line:#333; --bg:#1e1e1e; } }
+  header{ cursor:grab; padding:8px 10px; gap:4px 10px; border-bottom:none; }
+  .group + .group{ border-left:none; padding-left:0; }
+  .group-label, .btn-text, footer, .hint, #sizeReadout, #sizeDot{ display:none !important; }
+  button, [role="button"], select, input{ min-height:30px; }
+  .tool-btn{ min-width:30px; padding:0 6px; border-radius:8px; border-width:0; color:var(--ink-dim); }
+  .tool-btn svg{ width:16px; height:16px; }
+  .tool-btn:hover{ color:var(--ink); }
+  .tool-btn.active{ background:var(--panel-2); color:var(--ink); border-color:transparent; }
+  .tool-btn.primary{ background:transparent; color:var(--ink-dim); }
+  .tool-btn.primary:hover{ background:var(--panel-2); color:var(--ink); }
+  .tool-btn.danger:hover{ color:var(--danger); }
+  .swatch{ width:16px; height:16px; min-height:16px; border:none; box-shadow:inset 0 0 0 1px rgba(0,0,0,.15); }
+  .swatch.active{ box-shadow:0 0 0 2px var(--panel), 0 0 0 3px var(--ink); }
+  .custom-color{ width:18px; height:18px; min-height:18px; border:1px solid var(--line); }
+  .custom-color::-webkit-color-swatch-wrapper{ padding:0; }
+  input[type="range"]{ width:70px; }
+  select{ border:none; background:transparent; color:var(--ink-dim); font-weight:500; font-size:12.5px; }
+  main{ padding:0 10px 10px; }
+  .board-wrap{ border:1px solid var(--line); box-shadow:none; border-radius:8px; }
+  .hint .big{ font-size:18px; opacity:.5; }
+  @media (prefers-color-scheme: dark){ .toast{ background:#eee; color:#111; } }
+  .grip{ position:absolute; right:0; bottom:0; width:18px; height:18px; cursor:nwse-resize; z-index:8;
+    background:linear-gradient(135deg,transparent 55%,var(--ink-dim) 55%,var(--ink-dim) 62%,transparent 62%,transparent 75%,var(--ink-dim) 75%,var(--ink-dim) 82%,transparent 82%); opacity:.5; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="group" role="group" aria-label="Tools">
+    <button class="tool-btn active" data-tool="pen" title="Pen (P)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+      <span class="btn-text">Pen</span>
+    </button>
+    <button class="tool-btn" data-tool="marker" title="Fountain pen (H)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c3 4 5 7 5 10l-2.5 4h-5L7 12c0-3 2-6 5-10Z"/><path d="M12 9v7"/><path d="M9.5 20h5"/><path d="M12 20v2"/></svg>
+      <span class="btn-text">Marker</span>
+    </button>
+    <button class="tool-btn" data-tool="eraser" title="Eraser (E)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+      <span class="btn-text">Eraser</span>
+    </button>
+    <button class="tool-btn" data-tool="line" title="Line (L)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="20" x2="20" y2="4"/></svg>
+      <span class="btn-text">Line</span>
+    </button>
+    <button class="tool-btn" data-tool="rect" title="Rectangle (R)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="1"/></svg>
+      <span class="btn-text">Rect</span>
+    </button>
+    <button class="tool-btn" data-tool="ellipse" title="Ellipse (O)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="12" rx="10" ry="7"/></svg>
+      <span class="btn-text">Ellipse</span>
+    </button>
+    <button class="tool-btn" data-tool="text" title="Text (T)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+      <span class="btn-text">Text</span>
+    </button>
+  </div>
+
+  <div class="group" role="group" aria-label="Colour">
+    <span class="group-label">Colour</span>
+    <div class="swatches" id="swatches"></div>
+    <input type="color" class="custom-color" id="customColor" value="#7c4dff" title="Custom colour — any colour you like" aria-label="Custom colour">
+  </div>
+
+  <div class="group" role="group" aria-label="Brush size">
+    <span class="group-label">Size</span>
+    <span class="size-dot" id="sizeDot" style="width:4px;height:4px"></span>
+    <input type="range" id="sizeRange" min="1" max="40" value="4" aria-label="Brush size">
+    <span class="size-readout" id="sizeReadout">4 px</span>
+  </div>
+
+  <div class="group" role="group" aria-label="Board">
+    <span class="group-label">Board</span>
+    <select id="boardStyle" aria-label="Board background">
+      <option value="blank">Blank</option>
+      <option value="grid">Grid</option>
+      <option value="dots">Dots</option>
+      <option value="dark">Chalkboard</option>
+    </select>
+  </div>
+
+  <div class="group" role="group" aria-label="History and actions" style="margin-left:auto">
+    <button class="tool-btn" id="undoBtn" title="Undo (Ctrl+Z)" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+    </button>
+    <button class="tool-btn" id="redoBtn" title="Redo (Ctrl+Shift+Z)" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13"/></svg>
+    </button>
+    <button class="tool-btn danger" id="clearBtn" title="Clear the whole board">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      <span class="btn-text">Clear</span>
+    </button>
+    <button class="tool-btn primary" id="saveBtn" title="Download the board as a PNG image">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span class="btn-text">Save PNG</span>
+    </button>
+    <button class="tool-btn" id="closeBtn" title="Close (Esc)" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+    </button>
+  </div>
+</header>
+
+<main>
+  <div class="board-wrap" id="boardWrap">
+    <canvas id="bgLayer"></canvas>
+    <canvas id="board"></canvas>
+    <div class="hint" id="hint">
+      
+      <div class="small">Pick a tool up top. Everything stays in this tab until you save a PNG.</div>
+    </div>
+    <div class="confirm-bar" id="confirmBar">
+      <span>Wipe the whole board?</span>
+      <button class="yes" id="confirmYes">Clear it</button>
+      <button id="confirmNo">Keep drawing</button>
+    </div>
+    <div class="toast" id="toast"></div>
+    <div class="grip" id="grip" style="display:none"></div>
+  </div>
+</main>
+
+<footer>
+  <span id="strokeCount">Blank board</span>
+  <div class="keys">
+    <span><kbd>P</kbd> pen</span>
+    <span><kbd>E</kbd> eraser</span>
+    <span><kbd>Ctrl Z</kbd> undo</span>
+    <span><kbd>Ctrl ⇧ Z</kbd> redo</span>
+  </div>
+</footer>
+
+<script>
+(function(){
+  "use strict";
+  var wrap = document.getElementById('boardWrap');
+  var canvas = document.getElementById('board');
+  var ctx = canvas.getContext('2d');
+  var bgCanvas = document.getElementById('bgLayer');
+  var bgCtx = bgCanvas.getContext('2d');
+  var hint = document.getElementById('hint');
+  var toastEl = document.getElementById('toast');
+  var strokeCountEl = document.getElementById('strokeCount');
+
+  var COLORS = ['#1e2a24','#e23b2e','#f07f13','#f5c518','#2e9e4f','#2277d6','#7c4dff','#e75480','#8a5a2b','#ffffff'];
+  var state = {
+    tool: 'pen',
+    color: '#1e2a24',
+    size: 4,
+    boardStyle: 'blank',
+    drawing: false,
+    startX: 0, startY: 0, lastX: 0, lastY: 0,
+    snapshot: null,
+    strokes: 0
+  };
+
+  var undoStack = [], redoStack = [];
+  var MAX_HISTORY = 60;
+
+  /* ---------- Canvas sizing (keeps drawing on resize) ---------- */
+  function fitCanvas(preserve){
+    var rect = wrap.getBoundingClientRect();
+    var dpr = window.devicePixelRatio || 1;
+    var saved = null;
+    if (preserve && canvas.width > 0) {
+      saved = document.createElement('canvas');
+      saved.width = canvas.width; saved.height = canvas.height;
+      saved.getContext('2d').drawImage(canvas, 0, 0);
+    }
+    canvas.width = Math.max(1, Math.round(rect.width * dpr));
+    canvas.height = Math.max(1, Math.round(rect.height * dpr));
+    bgCanvas.width = canvas.width;
+    bgCanvas.height = canvas.height;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    bgCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    paintBackground();
+    if (saved) ctx.drawImage(saved, 0, 0, saved.width / dpr, saved.height / dpr);
+  }
+
+  function cssSize(){
+    var rect = wrap.getBoundingClientRect();
+    return { w: rect.width, h: rect.height };
+  }
+
+  /* The background (blank / grid / dots / chalkboard) lives on its own
+     canvas under the drawing layer, so the eraser never eats it and
+     switching styles never disturbs the art. */
+  function paintBackground(){
+    var s = cssSize();
+    var c = bgCtx;
+    if (state.boardStyle === 'dark'){
+      c.fillStyle = '#22352a';
+      c.fillRect(0, 0, s.w, s.h);
+      wrap.style.background = '#22352a';
+    } else {
+      c.fillStyle = '#ffffff';
+      c.fillRect(0, 0, s.w, s.h);
+      wrap.style.background = '#ffffff';
+    }
+    if (state.boardStyle === 'grid'){
+      c.save();
+      c.strokeStyle = 'rgba(34,119,214,.16)'; c.lineWidth = 1;
+      c.beginPath();
+      for (var x = 28; x < s.w; x += 28){ c.moveTo(x + .5, 0); c.lineTo(x + .5, s.h); }
+      for (var y = 28; y < s.h; y += 28){ c.moveTo(0, y + .5); c.lineTo(s.w, y + .5); }
+      c.stroke(); c.restore();
+    } else if (state.boardStyle === 'dots'){
+      c.save();
+      c.fillStyle = 'rgba(30,42,36,.22)';
+      for (var dx = 14; dx < s.w; dx += 28)
+        for (var dy = 14; dy < s.h; dy += 28){
+          c.beginPath(); c.arc(dx, dy, 1.4, 0, Math.PI * 2); c.fill();
+        }
+      c.restore();
+    }
+  }
+
+  /* ---------- History ---------- */
+  function pushHistory(){
+    try {
+      undoStack.push(canvas.toDataURL());
+      if (undoStack.length > MAX_HISTORY) undoStack.shift();
+    } catch(e){}
+    redoStack.length = 0;
+    updateHistoryButtons();
+  }
+  function restore(dataUrl, done){
+    var img = new Image();
+    img.onload = function(){
+      var s = cssSize();
+      ctx.save(); ctx.setTransform(1,0,0,1);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+      ctx.restore();
+      if (done) done();
+    };
+    img.src = dataUrl;
+  }
+  function updateHistoryButtons(){
+    document.getElementById('undoBtn').disabled = undoStack.length === 0;
+    document.getElementById('redoBtn').disabled = redoStack.length === 0;
+  }
+  function undo(){
+    if (!undoStack.length) return;
+    redoStack.push(canvas.toDataURL());
+    var prev = undoStack.pop();
+    restore(prev);
+    state.strokes = Math.max(0, state.strokes - 1);
+    updateCounts(); updateHistoryButtons();
+    if (state.strokes === 0) hint.style.display = '';
+  }
+  function redo(){
+    if (!redoStack.length) return;
+    undoStack.push(canvas.toDataURL());
+    var next = redoStack.pop();
+    restore(next);
+    state.strokes++;
+    updateCounts(); updateHistoryButtons();
+    hint.style.display = 'none';
+  }
+
+  function updateCounts(){
+    strokeCountEl.textContent = state.strokes === 0 ? 'Blank board'
+      : state.strokes + (state.strokes === 1 ? ' mark on the board' : ' marks on the board');
+  }
+
+  /* ---------- Toast ---------- */
+  var toastTimer = null;
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function(){ toastEl.classList.remove('show'); }, 2200);
+  }
+
+  /* ---------- Tools ---------- */
+  var toolBtns = document.querySelectorAll('[data-tool]');
+  function setTool(t){
+    state.tool = t;
+    toolBtns.forEach(function(b){ b.classList.toggle('active', b.dataset.tool === t); });
+    canvas.className = t === 'eraser' ? 'eraser-cursor' : (t === 'text' ? 'text-cursor' : '');
+    removeTextInput();
+  }
+  toolBtns.forEach(function(b){ b.addEventListener('click', function(){ setTool(b.dataset.tool); }); });
+
+  /* ---------- Colours ---------- */
+  var swatchesEl = document.getElementById('swatches');
+  COLORS.forEach(function(c){
+    var b = document.createElement('button');
+    b.className = 'swatch' + (c === state.color ? ' active' : '');
+    b.style.background = c;
+    b.title = c;
+    b.setAttribute('aria-label', 'Colour ' + c);
+    b.addEventListener('click', function(){
+      setColor(c);
+      if (state.tool === 'eraser') setTool('pen');
+    });
+    swatchesEl.appendChild(b);
+  });
+  function setColor(c){
+    state.color = c;
+    document.querySelectorAll('.swatch').forEach(function(s){
+      s.classList.toggle('active', s.title === c);
+    });
+  }
+  document.getElementById('customColor').addEventListener('input', function(e){
+    setColor(e.target.value);
+    if (state.tool === 'eraser') setTool('pen');
+  });
+
+  /* ---------- Size ---------- */
+  var sizeRange = document.getElementById('sizeRange');
+  var sizeReadout = document.getElementById('sizeReadout');
+  var sizeDot = document.getElementById('sizeDot');
+  sizeRange.addEventListener('input', function(){
+    state.size = parseInt(sizeRange.value, 10);
+    sizeReadout.textContent = state.size + ' px';
+    var d = Math.max(3, Math.min(22, state.size));
+    sizeDot.style.width = d + 'px'; sizeDot.style.height = d + 'px';
+  });
+
+  /* ---------- Board style ---------- */
+  document.getElementById('boardStyle').addEventListener('change', function(e){
+    state.boardStyle = e.target.value;
+    paintBackground();
+    if (state.boardStyle === 'dark' && state.color === '#1e2a24') setColor('#ffffff');
+    toast(state.boardStyle === 'dark' ? 'Chalkboard — grab the white chalk' : 'Board background changed');
+  });
+
+  /* ---------- Drawing ---------- */
+  function pos(e){
+    var r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+  function strokeStyle(){
+    if (state.tool === 'eraser'){
+      ctx.globalCompositeOperation = 'destination-out';
+      ctx.strokeStyle = 'rgba(0,0,0,1)';
+      ctx.globalAlpha = 1;
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.strokeStyle = state.color;
+      ctx.globalAlpha = 1;
+    }
+    ctx.lineWidth = state.tool === 'eraser' ? state.size * 3 : state.size;
+  }
+  function isShape(){ return state.tool === 'line' || state.tool === 'rect' || state.tool === 'ellipse'; }
+
+  canvas.addEventListener('pointerdown', function(e){
+    if (state.tool === 'text'){ e.preventDefault(); openTextInput(e); return; }
+    e.preventDefault();
+    canvas.setPointerCapture(e.pointerId);
+    pushHistory();
+    hint.style.display = 'none';
+    var p = pos(e);
+    state.drawing = true;
+    state.startX = state.lastX = p.x;
+    state.startY = state.lastY = p.y;
+    if (isShape()){
+      state.snapshot = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    } else if (state.tool === 'marker'){
+      state.w = state.size * 1.1; state.t = performance.now(); state.pool = 0;
+      inkDot(p.x, p.y, state.w * 0.6, 0.95);
+    } else {
+      strokeStyle();
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x + 0.01, p.y + 0.01);
+      ctx.stroke();
+    }
+  });
+
+  /* ---------- Leaky fountain pen ---------- */
+  function inkDot(x, y, r, a){
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = a; ctx.fillStyle = state.color;
+    ctx.beginPath(); ctx.arc(x, y, Math.max(.4, r), 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+  }
+  function inkSegment(p){
+    var now = performance.now(), dt = Math.max(1, now - state.t);
+    var dx = p.x - state.lastX, dy = p.y - state.lastY, dist = Math.hypot(dx, dy);
+    if (dist < 0.5) return;
+    var speed = dist / dt;                               /* px per ms */
+    var target = state.size * Math.min(1.7, Math.max(0.55, 1.6 - speed * 0.9));
+    state.w += (target - state.w) * 0.25;                /* slow = fat, fast = thin */
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.strokeStyle = state.color; ctx.lineCap = 'round';
+    /* soft bleed pass */
+    ctx.globalAlpha = 0.9; ctx.lineWidth = state.w;
+    ctx.shadowColor = state.color; ctx.shadowBlur = state.w * 0.8;
+    ctx.beginPath(); ctx.moveTo(state.lastX, state.lastY); ctx.lineTo(p.x, p.y); ctx.stroke();
+    /* rough fibre passes: jittered thin copies fray the edge */
+    ctx.shadowBlur = 0;
+    for (var i = 0; i < 2; i++){
+      var j = state.w * 0.45, ox = (Math.random() - .5) * j, oy = (Math.random() - .5) * j;
+      ctx.globalAlpha = 0.35; ctx.lineWidth = state.w * (0.5 + Math.random() * 0.4);
+      ctx.beginPath(); ctx.moveTo(state.lastX + ox, state.lastY + oy); ctx.lineTo(p.x + ox, p.y + oy); ctx.stroke();
+    }
+    ctx.restore();
+    state.t = now;
+  }
+
+  canvas.addEventListener('pointermove', function(e){
+    if (!state.drawing) return;
+    var p = pos(e);
+    if (isShape()){
+      ctx.putImageData(state.snapshot, 0, 0);
+      strokeStyle();
+      ctx.beginPath();
+      if (state.tool === 'line'){
+        ctx.moveTo(state.startX, state.startY); ctx.lineTo(p.x, p.y);
+      } else if (state.tool === 'rect'){
+        ctx.rect(state.startX, state.startY, p.x - state.startX, p.y - state.startY);
+      } else {
+        ctx.ellipse(
+          (state.startX + p.x) / 2, (state.startY + p.y) / 2,
+          Math.abs(p.x - state.startX) / 2, Math.abs(p.y - state.startY) / 2,
+          0, 0, Math.PI * 2
+        );
+      }
+      ctx.stroke();
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+    } else if (state.tool === 'marker'){
+      inkSegment(p);
+    } else {
+      strokeStyle();
+      ctx.beginPath();
+      ctx.moveTo(state.lastX, state.lastY);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+      ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+    }
+    state.lastX = p.x; state.lastY = p.y;
+  });
+
+  function endStroke(){
+    if (!state.drawing) return;
+    state.drawing = false;
+    state.snapshot = null;
+    state.strokes++;
+    updateCounts();
+  }
+  canvas.addEventListener('pointerup', endStroke);
+  canvas.addEventListener('pointercancel', endStroke);
+
+  /* ---------- Text tool ---------- */
+  var textInput = null;
+  function removeTextInput(){
+    if (textInput){ var t = textInput; textInput = null; t.removeEventListener('blur', commitText); t.remove(); }
+  }
+  function openTextInput(e){
+    removeTextInput();
+    var p = pos(e);
+    pushHistory();
+    hint.style.display = 'none';
+    textInput = document.createElement('textarea');
+    textInput.className = 'text-input';
+    textInput.rows = 1;
+    textInput.placeholder = 'Type, then Enter…';
+    textInput.style.left = p.x + 'px';
+    textInput.style.top = p.y + 'px';
+    textInput.style.fontSize = Math.max(16, state.size * 5) + 'px';
+    textInput.style.color = state.color;
+    wrap.appendChild(textInput);
+    var ti = textInput;
+    setTimeout(function(){ ti.focus(); }, 0);
+    textInput.addEventListener('keydown', function(ev){
+      if (ev.key === 'Enter' && !ev.shiftKey){ ev.preventDefault(); commitText(); }
+      if (ev.key === 'Escape'){ removeTextInput(); }
+      ev.stopPropagation();
+    });
+    textInput.addEventListener('blur', commitText);
+  }
+  function commitText(){
+    if (!textInput) return;
+    var ta = textInput;
+    var color = state.color;
+    var value = ta.value.trim();
+    var x = parseFloat(ta.style.left), y = parseFloat(ta.style.top);
+    var fontSize = parseFloat(ta.style.fontSize);
+    removeTextInput();
+    if (!value) return;
+    state.strokes++; updateCounts();
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+    ctx.fillStyle = state.color;
+    ctx.font = fontSize + 'px -apple-system,"Helvetica Neue",Helvetica,Arial,sans-serif';
+    ctx.textBaseline = 'top';
+    value.split('\n').forEach(function(line, i){
+      ctx.fillText(line, x + 6, y + 2 + i * fontSize * 1.25);
+    });
+    ctx.restore();
+    state.strokes++;
+    updateCounts();
+  }
+
+  /* ---------- Actions ---------- */
+  document.getElementById('undoBtn').addEventListener('click', undo);
+  document.getElementById('redoBtn').addEventListener('click', redo);
+
+  var confirmBar = document.getElementById('confirmBar');
+  document.getElementById('clearBtn').addEventListener('click', function(){
+    if (state.strokes === 0){ toast('Board is already blank'); return; }
+    confirmBar.classList.add('show');
+  });
+  document.getElementById('confirmNo').addEventListener('click', function(){
+    confirmBar.classList.remove('show');
+  });
+  document.getElementById('confirmYes').addEventListener('click', function(){
+    pushHistory();
+    var s = cssSize();
+    ctx.save();
+    ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
+    ctx.clearRect(0, 0, s.w, s.h);
+    ctx.restore();
+    state.strokes = 0;
+    updateCounts();
+    hint.style.display = '';
+    confirmBar.classList.remove('show');
+    toast('Board wiped clean');
+  });
+
+  document.getElementById('saveBtn').addEventListener('click', function(){
+    var s = cssSize();
+    var out = document.createElement('canvas');
+    var dpr = window.devicePixelRatio || 1;
+    out.width = canvas.width; out.height = canvas.height;
+    var octx = out.getContext('2d');
+    /* Flatten background layer + drawing layer so the PNG matches the screen */
+    octx.drawImage(bgCanvas, 0, 0);
+    octx.drawImage(canvas, 0, 0);
+    var url = out.toDataURL('image/png');
+    var nat = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.save;
+    if (nat){ nat.postMessage(url); return; }   /* menu-bar app: native save + clipboard */
+    var a = document.createElement('a');
+    a.download = 'whiteboard.png';
+    a.href = url;
+    a.click();
+    toast('Saved whiteboard.png');
+  });
+
+  /* ---------- Native (menu-bar app) hooks ---------- */
+  var wk = window.webkit && window.webkit.messageHandlers;
+  if (wk && wk.close){
+    var cb = document.getElementById('closeBtn'), grip = document.getElementById('grip');
+    cb.style.display = ''; grip.style.display = '';
+    cb.addEventListener('click', function(){ wk.close.postMessage(1); });
+    var rs = null;
+    grip.addEventListener('pointerdown', function(e){ e.preventDefault(); grip.setPointerCapture(e.pointerId); rs = {x:e.screenX, y:e.screenY}; });
+    grip.addEventListener('pointermove', function(e){ if (!rs) return; wk.resize.postMessage([e.screenX - rs.x, e.screenY - rs.y]); rs = {x:e.screenX, y:e.screenY}; });
+    grip.addEventListener('pointerup', function(){ rs = null; });
+    var hd = document.querySelector('header'), mv = null;
+    hd.addEventListener('pointerdown', function(e){
+      if (e.target.closest('button, input, select')) return;
+      e.preventDefault(); hd.setPointerCapture(e.pointerId); mv = {x:e.screenX, y:e.screenY};
+    });
+    hd.addEventListener('pointermove', function(e){ if (!mv) return; wk.move.postMessage([e.screenX - mv.x, e.screenY - mv.y]); mv = {x:e.screenX, y:e.screenY}; });
+    hd.addEventListener('pointerup', function(){ mv = null; });
+    document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !textInput) wk.close.postMessage(1); });
+  }
+
+  /* ---------- Keyboard ---------- */
+  document.addEventListener('keydown', function(e){
+    if (textInput) return;
+    var mod = e.ctrlKey || e.metaKey;
+    if (mod && e.key.toLowerCase() === 'z'){ e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
+    if (mod && e.key.toLowerCase() === 'y'){ e.preventDefault(); redo(); return; }
+    if (mod) return;
+    var map = { p:'pen', h:'marker', e:'eraser', l:'line', r:'rect', o:'ellipse', t:'text' };
+    var t = map[e.key.toLowerCase()];
+    if (t) setTool(t);
+  });
+
+  /* ---------- Init ---------- */
+  var resizeTimer = null;
+  window.addEventListener('resize', function(){
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function(){ fitCanvas(true); }, 150);
+  });
+  fitCanvas(false);
+  updateHistoryButtons();
+})();
+</script>
+</body>
+</html>
