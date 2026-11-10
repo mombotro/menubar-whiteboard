@@ -22,7 +22,7 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, NSWind
         }
 
         let cfg = WKWebViewConfiguration()
-        for n in ["save", "close", "resize", "move"] { cfg.userContentController.add(self, name: n) }
+        for n in ["save", "copy", "close", "resize", "move"] { cfg.userContentController.add(self, name: n) }
         web = WKWebView(frame: .zero, configuration: cfg)
         if let url = Bundle.main.url(forResource: "whiteboard", withExtension: "html") {
             web.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
@@ -56,9 +56,13 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, NSWind
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
             guard let self = self, self.panel.isKeyWindow,
                   e.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.command),
-                  e.charactersIgnoringModifiers?.lowercased() == "z" else { return e }
-            let redo = e.modifierFlags.contains(.shift)
-            self.web.evaluateJavaScript("window.__undo(\(redo))") { r, _ in }
+                  let k = e.charactersIgnoringModifiers?.lowercased(), k == "z" || k == "c" else { return e }
+            if k == "c" {
+                self.web.evaluateJavaScript("window.__copy()") { _, _ in }
+            } else {
+                let redo = e.modifierFlags.contains(.shift)
+                self.web.evaluateJavaScript("window.__undo(\(redo))") { _, _ in }
+            }
             return nil
         }
         if let sz = UserDefaults.standard.array(forKey: "size") as? [Double], sz.count == 2 {
@@ -144,15 +148,20 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, NSWind
         let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Whiteboard")
         let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd_HH-mm-ss"
         let file = dir.appendingPathComponent("whiteboard_\(fmt.string(from: Date())).png")
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.writeObjects([img])
+        if m.name == "copy" {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.writeObjects([img])
+            NSSound(named: "Tink")?.play()
+            say("Copied to clipboard")
+            return
+        }
         do {
             try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             try data.write(to: file)
             NSSound(named: "Tink")?.play()
-            say("Saved to Pictures/Whiteboard, copied to clipboard")
+            say("Saved to Pictures/Whiteboard")
         } catch {
-            say("Copied to clipboard. File save failed: \(error.localizedDescription)")
+            say("Save failed: \(error.localizedDescription)")
         }
     }
 }

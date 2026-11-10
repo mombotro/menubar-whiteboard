@@ -267,7 +267,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
       <span class="btn-text">Clear</span>
     </button>
-    <button class="tool-btn primary" id="saveBtn" title="Download the board as a PNG image">
+        <button class="tool-btn" id="copyBtn" title="Copy to clipboard (no file)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+    </button>
+    <button class="tool-btn primary" id="saveBtn" title="Save as PNG file">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       <span class="btn-text">Save PNG</span>
     </button>
@@ -286,9 +289,9 @@
       <div class="small">Pick a tool up top. Everything stays in this tab until you save a PNG.</div>
     </div>
     <div class="confirm-bar" id="confirmBar">
-      <span>Wipe the whole board?</span>
-      <button class="yes" id="confirmYes">Clear it</button>
-      <button id="confirmNo">Keep drawing</button>
+      <span>Wipe the board?</span>
+      <button class="yes" id="confirmYes">Wipe</button>
+      <button id="confirmNo">Keep</button>
     </div>
     <div class="toast" id="toast"></div>
     <div class="grip" id="grip" style="display:none"></div>
@@ -675,6 +678,7 @@
   }
 
   /* ---------- Actions ---------- */
+  window.__copy = function(){ if (textInput){ document.execCommand('copy'); return; } exportBoard('copy'); };
   window.__undo = function(redoIt){ if (textInput) return false; redoIt ? redo() : undo(); return true; };
   document.getElementById('undoBtn').addEventListener('click', undo);
   document.getElementById('redoBtn').addEventListener('click', redo);
@@ -701,24 +705,33 @@
     toast('Board wiped clean');
   });
 
-  document.getElementById('saveBtn').addEventListener('click', function(){
-    var s = cssSize();
+  function flatten(){
     var out = document.createElement('canvas');
-    var dpr = window.devicePixelRatio || 1;
     out.width = canvas.width; out.height = canvas.height;
     var octx = out.getContext('2d');
     /* Flatten background layer + drawing layer so the PNG matches the screen */
     octx.drawImage(bgCanvas, 0, 0);
     octx.drawImage(canvas, 0, 0);
-    var url = out.toDataURL('image/png');
-    var nat = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.save;
-    if (nat){ nat.postMessage(url); return; }   /* menu-bar app: native save + clipboard */
+    return out.toDataURL('image/png');
+  }
+  function exportBoard(kind){
+    var url = flatten();
+    var h = window.webkit && window.webkit.messageHandlers;
+    if (h && h[kind]){ h[kind].postMessage(url); return; }   /* menu-bar app: native */
+    if (kind === 'copy'){
+      fetch(url).then(function(r){ return r.blob(); }).then(function(bl){
+        return navigator.clipboard.write([new ClipboardItem({'image/png': bl})]);
+      }).then(function(){ toast('Copied'); }, function(){ toast('Copy not available here'); });
+      return;
+    }
     var a = document.createElement('a');
     a.download = 'whiteboard.png';
     a.href = url;
     a.click();
     toast('Saved whiteboard.png');
-  });
+  }
+  document.getElementById('saveBtn').addEventListener('click', function(){ exportBoard('save'); });
+  document.getElementById('copyBtn').addEventListener('click', function(){ exportBoard('copy'); });
 
   /* ---------- Native (menu-bar app) hooks ---------- */
   var wk = window.webkit && window.webkit.messageHandlers;
