@@ -1,5 +1,7 @@
 # Menu-bar Whiteboard
 
+![Screenshot](screenshot.png)
+
 Click the icon in the macOS menu bar, a whiteboard drops down. Draw, then save a PNG.
 
 - Tools: pen, fountain pen, eraser, line, rectangle, ellipse, text

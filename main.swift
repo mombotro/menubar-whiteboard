@@ -43,6 +43,24 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, NSWind
         web.layer?.masksToBounds = true
         panel.contentView = web
         panel.delegate = self
+
+        // Edit menu so copy/paste/select-all work in the text box (accessory apps have no menu bar)
+        let main = NSMenu(), editItem = NSMenuItem(), edit = NSMenu(title: "Edit")
+        for (t, sel, k) in [("Cut", #selector(NSText.cut(_:)), "x"), ("Copy", #selector(NSText.copy(_:)), "c"),
+                            ("Paste", #selector(NSText.paste(_:)), "v"), ("Select All", #selector(NSText.selectAll(_:)), "a")] {
+            edit.addItem(withTitle: t, action: sel, keyEquivalent: k)
+        }
+        editItem.submenu = edit; main.addItem(editItem); NSApp.mainMenu = main
+
+        // Cmd-Z / Shift-Cmd-Z -> canvas undo/redo (unless typing text)
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
+            guard let self = self, self.panel.isKeyWindow,
+                  e.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(.command),
+                  e.charactersIgnoringModifiers?.lowercased() == "z" else { return e }
+            let redo = e.modifierFlags.contains(.shift)
+            self.web.evaluateJavaScript("window.__undo(\(redo))") { r, _ in }
+            return nil
+        }
         if let sz = UserDefaults.standard.array(forKey: "size") as? [Double], sz.count == 2 {
             panel.setContentSize(NSSize(width: sz[0], height: sz[1]))
         }
@@ -116,18 +134,26 @@ final class App: NSObject, NSApplicationDelegate, WKScriptMessageHandler, NSWind
             UserDefaults.standard.set([w, h], forKey: "size")
             return
         }
+        func say(_ msg: String) {
+            let esc = msg.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "'", with: "\\'")
+            web.evaluateJavaScript("window.toast&&window.toast('\(esc)')")
+        }
         guard let s = m.body as? String, let comma = s.firstIndex(of: ","),
               let data = Data(base64Encoded: String(s[s.index(after: comma)...])),
-              let img = NSImage(data: data) else { return }
+              let img = NSImage(data: data) else { say("Save failed: bad image"); return }
         let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Pictures/Whiteboard")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let fmt = DateFormatter(); fmt.dateFormat = "yyyy-MM-dd_HH-mm-ss"
         let file = dir.appendingPathComponent("whiteboard_\(fmt.string(from: Date())).png")
-        try? data.write(to: file)
         NSPasteboard.general.clearContents()
         NSPasteboard.general.writeObjects([img])
-        NSSound(named: "Tink")?.play()
-        web.evaluateJavaScript("typeof toast==='function'&&toast('Saved to Pictures/Whiteboard + copied')")
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try data.write(to: file)
+            NSSound(named: "Tink")?.play()
+            say("Saved to Pictures/Whiteboard, copied to clipboard")
+        } catch {
+            say("Copied to clipboard. File save failed: \(error.localizedDescription)")
+        }
     }
 }
 

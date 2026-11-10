@@ -404,7 +404,7 @@
     var img = new Image();
     img.onload = function(){
       var s = cssSize();
-      ctx.save(); ctx.setTransform(1,0,0,1);
+      ctx.save(); ctx.setTransform(1,0,0,1,0,0);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0);
       ctx.restore();
@@ -442,6 +442,7 @@
 
   /* ---------- Toast ---------- */
   var toastTimer = null;
+  window.toast = function(msg){ toast(msg); };
   function toast(msg){
     toastEl.textContent = msg;
     toastEl.classList.add('show');
@@ -674,6 +675,7 @@
   }
 
   /* ---------- Actions ---------- */
+  window.__undo = function(redoIt){ if (textInput) return false; redoIt ? redo() : undo(); return true; };
   document.getElementById('undoBtn').addEventListener('click', undo);
   document.getElementById('redoBtn').addEventListener('click', redo);
 
